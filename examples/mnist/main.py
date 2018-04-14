@@ -50,7 +50,9 @@ def main():
     trainer.extend(extensions.Evaluator(test_iter, model, device=args.gpu))
     
     trainer.extend(extensions.dump_graph('main/loss'))
+    
     frequency = args.epoch if args.frequency == -1 else max(1, args.frequency)
+    trainer.extend(extensions.snapshot(), trigger=(frequency, 'epoch'))
     
     trainer.extend(extensions.LogReport())
     
