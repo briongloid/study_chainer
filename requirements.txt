@@ -1,0 +1,7 @@
+chainer
+numpy
+scipy
+matplotlib
+scikit-image
+pillow
+ipython
