@@ -105,3 +105,4 @@ ENV/
 *~
 result
 workspace
+.DS_Store
