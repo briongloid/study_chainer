@@ -3,15 +3,11 @@ import numpy as np
 import chainer
 import chainer.functions as F
 import chainer.links as L
+from chainer import initializers
 import chainer.backends.cuda as cuda
 
-def make_z(n):
-    def _make_z(idx):
-        return np.random.uniform(-1, 1, n).astype(np.float32)
-    return _make_z
-
 def add_noise(h, sigma=0.2):
-    xp = cuda.get_array_module(h.data)
+    xp = cuda.get_array_module(h)
     if chainer.config.train:
         return h + sigma * xp.random.randn(*h.shape).astype(xp.float32)
     else:
@@ -19,20 +15,19 @@ def add_noise(h, sigma=0.2):
 
 class Generator(chainer.Chain):
     
-    def __init__(self, n_hidden, bottom_width=4, ch=512, wscale=0.02):
+    def __init__(self, n_noise, bottom_width=4, ch=512, initialW=initializers.Normal(0.02)):
         super(Generator, self).__init__()
-        self.n_hidden = n_hidden
+        self.n_noise = n_noise
         self.ch = ch
         self.bottom_width = bottom_width
-        w = chainer.initializers.Normal(wscale)
         
         with self.init_scope():
-            self.l0 = L.Linear(n_hidden, bottom_width*bottom_width*ch,
-                               initialW=w)
-            self.dc1 = L.Deconvolution2D(ch, ch//2, 4, 2, 1, initialW=w)
-            self.dc2 = L.Deconvolution2D(ch//2, ch//4, 4, 2, 1, initialW=w)
-            self.dc3 = L.Deconvolution2D(ch//4, ch//8, 4, 2, 1, initialW=w)
-            self.dc4 = L.Deconvolution2D(ch//8, 3, 3, 1, 1, initialW=w)
+            self.l0 = L.Linear(n_noise, bottom_width*bottom_width*ch,
+                               initialW=initialW)
+            self.dc1 = L.Deconvolution2D(ch, ch//2, 4, 2, 1, initialW=initialW)
+            self.dc2 = L.Deconvolution2D(ch//2, ch//4, 4, 2, 1, initialW=initialW)
+            self.dc3 = L.Deconvolution2D(ch//4, ch//8, 4, 2, 1, initialW=initialW)
+            self.dc4 = L.Deconvolution2D(ch//8, 3, 3, 1, 1, initialW=initialW)
             self.bn0 = L.BatchNormalization(bottom_width*bottom_width*ch)
             self.bn1 = L.BatchNormalization(ch//2)
             self.bn2 = L.BatchNormalization(ch//4)
@@ -46,22 +41,27 @@ class Generator(chainer.Chain):
         h = F.relu(self.bn3(self.dc3(h)))
         x = F.sigmoid(self.dc4(h))
         return x
+    
+    def make_noise(self, batchsize=None):
+        size = (self.n_noise,)
+        if batchsize is not None:
+            size = (batchsize,) + size
+        return np.random.normal(0, 1, size=size).astype(np.float32)
 
 class Discriminator(chainer.Chain):
     
-    def __init__(self, bottom_width=4, ch=512, wscale=0.02):
+    def __init__(self, bottom_width=4, ch=512, initialW=initializers.Normal(0.02)):
         super(Discriminator, self).__init__()
-        w = chainer.initializers.Normal(wscale)
         
         with self.init_scope():
-            self.c0_0 = L.Convolution2D(3, ch//8, 3, 1, 1, initialW=w)
-            self.c0_1 = L.Convolution2D(ch//8, ch//4, 4, 2, 1, initialW=w)
-            self.c1_0 = L.Convolution2D(ch//4, ch//4, 3, 1, 1, initialW=w)
-            self.c1_1 = L.Convolution2D(ch//4, ch//2, 4, 2, 1, initialW=w)
-            self.c2_0 = L.Convolution2D(ch//2, ch//2, 3, 1, 1, initialW=w)
-            self.c2_1 = L.Convolution2D(ch//2, ch//1, 4, 2, 1, initialW=w)
-            self.c3_0 = L.Convolution2D(ch//1, ch//1, 3, 1, 1, initialW=w)
-            self.l4 = L.Linear(bottom_width*bottom_width*ch, 1, initialW=w)
+            self.c0_0 = L.Convolution2D(3, ch//8, 3, 1, 1, initialW=initialW)
+            self.c0_1 = L.Convolution2D(ch//8, ch//4, 4, 2, 1, initialW=initialW)
+            self.c1_0 = L.Convolution2D(ch//4, ch//4, 3, 1, 1, initialW=initialW)
+            self.c1_1 = L.Convolution2D(ch//4, ch//2, 4, 2, 1, initialW=initialW)
+            self.c2_0 = L.Convolution2D(ch//2, ch//2, 3, 1, 1, initialW=initialW)
+            self.c2_1 = L.Convolution2D(ch//2, ch//1, 4, 2, 1, initialW=initialW)
+            self.c3_0 = L.Convolution2D(ch//1, ch//1, 3, 1, 1, initialW=initialW)
+            self.l4 = L.Linear(bottom_width*bottom_width*ch, 1, initialW=initialW)
             self.bn0_1 = L.BatchNormalization(ch//4, use_gamma=False)
             self.bn1_0 = L.BatchNormalization(ch//4, use_gamma=False)
             self.bn1_1 = L.BatchNormalization(ch//2, use_gamma=False)

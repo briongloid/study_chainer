@@ -2,16 +2,16 @@ import argparse
 import os
 
 import chainer
-from chainer.backends import cuda
 from chainer import training
 from chainer.training import extensions
+from chainer.backends import cuda
 
-from net import Generator
-from net import Discriminator
-from net import make_z
-from updater import DCGANUpdater
-from dataset import DCGANDataset
-from visualize import out_generated_image
+from net import Generator, Discriminator
+
+import sys
+sys.path.append('../../..')
+from study_chainer.training.updaters import DCGANUpdater
+from study_chainer.training.extensions.generate_image import GenerateImage
 
 def main():
 
@@ -21,27 +21,27 @@ def main():
     parser.add_argument('--gpu', '-g', type=int, default=-1)
     parser.add_argument('--out', '-o', default='')
     parser.add_argument('--resume', '-r', default='')
-    parser.add_argument('--n_hidden', '-n', type=int, default=100)
+    parser.add_argument('--n_noise', '-n', type=int, default=100)
     parser.add_argument('--seed', type=int, default=0)
-    parser.add_argument('--snapshot_interval', type=int, default=100000)
+    parser.add_argument('--snapshot_interval', type=int, default=1000)
     parser.add_argument('--display_interval', type=int, default=100)
     args = parser.parse_args()
 
     out_dir = 'result'
     if args.out != '':
-        out_dir = '{}/{}'.format(out, args.out)
+        out_dir = '{}/{}'.format(out_dir, args.out)
     print('GPU: {}'.format(args.gpu))
     print('# Minibatch-size: {}'.format(args.batchsize))
-    print('# n_hidden: {}'.format(args.n_hidden))
+    print('# n_hidden: {}'.format(args.n_noise))
     print('# epoch: {}'.format(args.epoch))
     print('# out: {}'.format(out_dir))
     print('')
 
-    gen = Generator(n_hidden=args.n_hidden)
+    gen = Generator(n_noise=args.n_noise)
     dis = Discriminator()
 
     if args.gpu >= 0:
-        cuda.get_device_from_id(args.gpu).use()
+        cuda.get_device_from_id(args.gpu)
         gen.to_gpu()
         dis.to_gpu()
 
@@ -55,8 +55,8 @@ def main():
     dis_optimizer = make_optimizer(dis)
 
     train, _ = chainer.datasets.get_cifar10(withlabel=False)
-    train = DCGANDataset(make_z=make_z(args.n_hidden), dataset=train)
-
+    train = chainer.datasets.TransformDataset(train, lambda data: (gen.make_noise(), data))
+    
     train_iter = chainer.iterators.SerialIterator(train, args.batchsize)
 
     updater = DCGANUpdater(
@@ -69,9 +69,7 @@ def main():
     trainer = training.Trainer(updater, (args.epoch, 'epoch'), out=out_dir)
 
     snapshot_interval = (args.snapshot_interval, 'iteration')
-    generateimage_interval = (args.snapshot_interval//100, 'iteration')
     display_interval = (args.display_interval, 'iteration')
-    
     trainer.extend(
         extensions.snapshot(filename='snapshot_iter_{.updater.iteration}.npz'),
         trigger=snapshot_interval)
@@ -85,10 +83,10 @@ def main():
     ]), trigger=display_interval)
     trainer.extend(extensions.ProgressBar(update_interval=10))
     trainer.extend(
-        out_generated_image(
-            gen, dis,
-            10, 10, args.seed, out_dir, make_z(args.n_hidden)),
-        trigger=generateimage_interval)
+        GenerateImage(
+            gen, lambda i : gen.make_noise(),
+            file_name='{}/{}'.format(out_dir, 'preview/{.updater.iteration:0>8}.png'),
+            rows=10, cols=10, seed=800, trigger=snapshot_interval))
 
     trainer.run()
 

@@ -28,7 +28,7 @@ class GenerateImage(extension.Extension):
                  generator=None,
                  trigger=(1, 'epoch'),
                  file_name='previwe/{.updater.iteration:0>8}.png',
-                 rows=5, cols=5, seed=0
+                 rows=5, cols=5, seed=8231
                 ):
         self._generate_func = generate_func
         self._data_func = data_func
