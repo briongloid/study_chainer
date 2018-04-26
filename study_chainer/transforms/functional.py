@@ -4,7 +4,7 @@ def _crop_size(data, size):
     shape = data.shape
     ret = []
     for s in size:
-        if s in [Ellipsis, 0, None]:
+        if s in [Ellipsis, None]:
             ret.append(Ellipsis)
         else:
             ret.append(s)
@@ -17,6 +17,8 @@ def random_slice(data, size):
     sli = []
     for i in range(len(size)):
         if size[i] is Ellipsis:
+            sli.append(Ellipsis)
+        elif size[i] == shape[i]:
             sli.append(Ellipsis)
         else:
             r = np.random.randint(shape[i]-size[i])
