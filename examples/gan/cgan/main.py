@@ -7,14 +7,13 @@ from chainer.training import extensions
 from chainer.backends import cuda
 
 from net import Generator, Discriminator
+from updater import CGANUpdater
 
 import sys
 sys.path.append('../../..')
-from study_chainer.training.updaters import DCGANUpdater
 from study_chainer.training.extensions.generate_image import GenerateImage
 
 def main():
-
     parser = argparse.ArgumentParser()
     parser.add_argument('--batchsize', '-b', type=int, default=50)
     parser.add_argument('--epoch', '-e', type=int, default=1000)
@@ -26,7 +25,7 @@ def main():
     parser.add_argument('--snapshot_interval', type=int, default=1000)
     parser.add_argument('--display_interval', type=int, default=100)
     args = parser.parse_args()
-
+    
     out_dir = 'result'
     if args.out != '':
         out_dir = '{}/{}'.format(out_dir, args.out)
@@ -36,9 +35,9 @@ def main():
     print('# epoch: {}'.format(args.epoch))
     print('# out: {}'.format(out_dir))
     print('')
-
-    gen = Generator(n_noise=args.n_noise)
-    dis = Discriminator()
+    
+    gen = Generator(n_noise=args.n_noise, n_class=10)
+    dis = Discriminator(n_class=10)
 
     if args.gpu >= 0:
         cuda.get_device_from_id(args.gpu)
@@ -54,12 +53,13 @@ def main():
     gen_optimizer = make_optimizer(gen)
     dis_optimizer = make_optimizer(dis)
 
-    train, _ = chainer.datasets.get_cifar10(withlabel=False)
-    train = chainer.datasets.TransformDataset(train, lambda data: (gen.make_noise(), data))
+    train, _ = chainer.datasets.get_cifar10(withlabel=True)
+    transformer = lambda data: (gen.make_noise(),) + data
+    train = chainer.datasets.TransformDataset(train, transformer)
     
     train_iter = chainer.iterators.SerialIterator(train, args.batchsize)
 
-    updater = DCGANUpdater(
+    updater = CGANUpdater(
         models=(gen, dis),
         iterator=train_iter,
         optimizer={'gen': gen_optimizer, 'dis': dis_optimizer},
@@ -81,15 +81,24 @@ def main():
     trainer.extend(extensions.PrintReport([
         'epoch', 'iteration', 'gen/loss', 'dis/loss',
     ]), trigger=display_interval)
+    trainer.extend(extensions.PlotReport(
+        ['gen/loss', 'dis/loss'], x_key='iteration', trigger=display_interval))
     trainer.extend(extensions.ProgressBar(update_interval=10))
+    
+    gen_func = lambda data: gen(data[0], data[1])
+    def data_func(gen):
+        def _data_func(index):
+            return (gen.make_noise(), index//10)
+        return _data_func
+    
     trainer.extend(
         GenerateImage(
-            gen, lambda i : gen.make_noise(),
+            gen_func, data_func(gen),
             file_name='{}/{}'.format(out_dir, 'preview/{.updater.iteration:0>8}.png'),
             rows=10, cols=10, seed=800, device=args.gpu,
             trigger=snapshot_interval))
 
     trainer.run()
-
+    
 if __name__ == '__main__':
     main()

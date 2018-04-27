@@ -28,8 +28,9 @@ class GenerateImage(extension.Extension):
                  generator=None,
                  trigger=(1, 'epoch'),
                  file_name='previwe/{.updater.iteration:0>8}.png',
-                 rows=5, cols=5, seed=8231
+                 rows=5, cols=5, seed=8231, device=-1
                 ):
+        super(GenerateImage, self).__init__()
         self._generate_func = generate_func
         self._data_func = data_func
         self._generator = generator
@@ -38,6 +39,7 @@ class GenerateImage(extension.Extension):
         self._rows = rows
         self._cols = cols
         self._seed = seed
+        self._device = device
     
     def __call__(self, trainer):
         if _available:
@@ -53,14 +55,9 @@ class GenerateImage(extension.Extension):
         cols = self._cols
         n_images = rows * cols
         
-        if hasattr(self._generate_func, 'xp'):
-            xp = self._generate_func.xp
-        else:
-            xp = self._generator.xp
-        
-        x = xp.asarray([self._data_func(i) for i in range(n_images)])
-        x = concat_examples(x)
-        with chainer.using_config('train', False):
+        x = [self._data_func(i) for i in range(n_images)]
+        x = concat_examples(x, self._device)
+        with chainer.using_config('train', False), chainer.no_backprop_mode():
             t = self._generate_func(x)
         t = chainer.cuda.to_cpu(t.data)
         np.random.seed()
